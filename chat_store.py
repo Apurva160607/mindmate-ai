@@ -52,6 +52,7 @@ class Chat(NamedTuple):
     id: int
     title: str
     updated_at: float
+    pinned: int
 
 
 class Usage(NamedTuple):
@@ -76,9 +77,17 @@ def _connect() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(_SCHEMA)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(chats)")}
-    if "context_tokens" not in columns:      # added after the first release
-        conn.execute("ALTER TABLE chats ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0")
-        conn.commit()
+    if "context_tokens" not in columns:
+        conn.execute(
+            "ALTER TABLE chats ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0"
+    )
+
+    if "pinned" not in columns:
+        conn.execute(
+            "ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+        )
+
+    conn.commit()
     return conn
 
 
@@ -110,10 +119,54 @@ def list_chats(user_key: str) -> list:
     _check_user(user_key)
     with closing(_connect()) as conn:
         rows = conn.execute(
-            "SELECT id, title, updated_at FROM chats WHERE user_key = ? ORDER BY updated_at DESC, id DESC",
+            """
+            SELECT id, title, updated_at, pinned
+            FROM chats
+            WHERE user_key = ?
+            ORDER BY pinned DESC, updated_at DESC, id DESC
+            """,
             (user_key,),
         ).fetchall()
     return [Chat(*r) for r in rows]
+
+def set_chat_pinned(user_key: str, chat_id: int, pinned: bool) -> bool:
+    """Pin or unpin a chat belonging to the signed-in user."""
+    _check_user(user_key)
+
+    with closing(_connect()) as conn, conn:
+        cur = conn.execute(
+            """
+            UPDATE chats
+            SET pinned = ?
+            WHERE id = ? AND user_key = ?
+            """,
+            (1 if pinned else 0, chat_id, user_key),
+        )
+        return cur.rowcount == 1
+
+
+def toggle_chat_pin(user_key: str, chat_id: int) -> bool:
+    """Toggle pin status. Returns the new status, or False if not owned."""
+    _check_user(user_key)
+
+    with closing(_connect()) as conn, conn:
+        cur = conn.execute(
+            """
+            UPDATE chats
+            SET pinned = CASE WHEN pinned = 1 THEN 0 ELSE 1 END
+            WHERE id = ? AND user_key = ?
+            """,
+            (chat_id, user_key),
+        )
+        if cur.rowcount != 1:
+            return False
+
+        row = conn.execute(
+            "SELECT pinned FROM chats WHERE id = ? AND user_key = ?",
+            (chat_id, user_key),
+        ).fetchone()
+
+        return bool(row[0]) if row else False
 
 
 def search_chats(user_key: str, query: str) -> list:
@@ -125,9 +178,9 @@ def search_chats(user_key: str, query: str) -> list:
     like = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     with closing(_connect()) as conn:
         rows = conn.execute(
-            "SELECT c.id, c.title, c.updated_at FROM chats c WHERE c.user_key = ? AND ("
+            "SELECT c.id, c.title, c.updated_at, c.pinned FROM chats c WHERE c.user_key = ? AND ("
             " c.title LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM messages m WHERE m.chat_id = c.id"
-            " AND m.content LIKE ? ESCAPE '\\')) ORDER BY c.updated_at DESC, c.id DESC",
+            " AND m.content LIKE ? ESCAPE '\\')) ORDER BY c.pinned DESC, c.updated_at DESC, c.id DESC",
             (user_key, like, like),
         ).fetchall()
     return [Chat(*r) for r in rows]
@@ -137,8 +190,12 @@ def get_chat(user_key: str, chat_id: int) -> Optional[Chat]:
     _check_user(user_key)
     with closing(_connect()) as conn:
         row = conn.execute(
-            "SELECT id, title, updated_at FROM chats WHERE id = ? AND user_key = ?", (chat_id, user_key)
+            """SELECT id, title, updated_at, pinned
+               FROM chats
+               WHERE id = ? AND user_key = ?""",
+            (chat_id, user_key),
         ).fetchone()
+
     return Chat(*row) if row else None
 
 

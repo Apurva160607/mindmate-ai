@@ -1,0 +1,47 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets
+.streamlit/secrets.toml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Databases and user data
+*.db
+*.sqlite
+*.sqlite3
+data/
+personal_vault/
+
+# Backups and temporary files
+backup/
+*.bak
+*.tmp
+apply_day*.py
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local-only scripts (review before publishing)
+MINDMATE_AI_real_auth_local.py
+pwa_proxy.py
+test_smtp.py
+auth_test.py

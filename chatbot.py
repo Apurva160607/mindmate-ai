@@ -397,8 +397,14 @@ def _sidebar(user_key: str, name: str, dock) -> None:
                 st.session_state.chat_id = chat.id
                 st.rerun()
             with right.popover("\u22EF", width="stretch"):
+                pin_label = "Unpin chat" if chat.pinned else "Pin chat"
+
+                if st.button(pin_label, key=f"pin_{chat.id}", width="stretch"):
+                    store.set_chat_pinned(user_key, chat.id, not bool(chat.pinned))
+                    st.rerun()
                 new_title = st.text_input("Rename chat", value=chat.title, max_chars=store.MAX_TITLE,
                                           key=f"rn_{chat.id}")
+                
                 if st.button("Save name", key=f"rs_{chat.id}", width="stretch"):
                     if store.rename_chat(user_key, chat.id, new_title):
                         st.rerun()

@@ -115,57 +115,9 @@ def _style():
         padding: 20px;
     }
 
-    [data-testid="stSidebar"],
-    section[data-testid="stSidebar"] {
-        display: block !important;
-        visibility: visible !important;
-        width: 21rem !important;
-        min-width: 21rem !important;
-        max-width: 21rem !important;
-        transform: none !important;
-        margin-left: 0 !important;
-        flex-shrink: 0 !important;
-    }
-    [data-testid="stSidebar"] > div:first-child {
-        width: 21rem !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
-        gap: .65rem;
-    }
-    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .65rem; }
-    .mm-reminder-side-brand {
-        color: #354C3D; font-size: 20px; font-weight: 800;
-        padding: 8px 4px 18px; border-bottom: 1px solid #DCE7D9;
-        margin-bottom: 12px;
-    }
-    .st-key-reminders_sidebar_active button {
-        background: #E7F0E2 !important;
-        border-color: #8DA783 !important;
-        color: #304C35 !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-
-def _reminders_sidebar(name, dock):
-    """Shared left navigation used across the signed-in MINDMATE pages."""
-    with st.sidebar:
-        st.markdown('<div class="mm-reminder-side-brand">🧠 MINDMATE AI</div>', unsafe_allow_html=True)
-        if st.button("Dashboard", key="reminders_nav_dashboard", icon=":material/dashboard:", width="stretch"):
-            st.session_state["view"] = "dashboard"
-            st.rerun()
-        if st.button("Chatbot", key="reminders_nav_chat", icon=":material/chat:", width="stretch"):
-            st.session_state["view"] = "chat"
-            st.rerun()
-        if st.button("Document Vault", key="reminders_nav_vault", icon=":material/lock:", width="stretch"):
-            st.session_state["view"] = "vault"
-            st.rerun()
-        with st.container(key="reminders_sidebar_active"):
-            st.button("Reminders", key="reminders_nav_current", icon=":material/notifications:",
-                      width="stretch", disabled=True)
-        st.divider()
-        if dock and name:
-            dock(name, key="chat_dock")
 
 
 def render_reminders(user_key, name=None, dock=None):
@@ -174,23 +126,16 @@ def render_reminders(user_key, name=None, dock=None):
         return
 
     _style()
-    _reminders_sidebar(name, dock)
+    if dock and name:
+        dock(name)
 
     with st.container(key="reminders_page"):
         with st.container(key="reminders_header"):
-            back_col, title_col, spacer_col = st.columns([1.15, 3.7, 1.55], vertical_alignment="center")
-            with back_col:
-                if st.button("← Dashboard", key="reminders_back", width="stretch"):
-                    st.session_state["view"] = "dashboard"
-                    st.rerun()
-            with title_col:
-                st.markdown('<div class="reminder-heading">Your Reminders 🌿</div>', unsafe_allow_html=True)
-                st.markdown(
-                    '<div class="reminder-subtitle">'
-                    'A little reminder for everything that matters.'
-                    '</div>',
-                    unsafe_allow_html=True
-                )
+            st.markdown('<div class="reminder-heading">Your Reminders</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="reminder-subtitle">Appointments, important dates and tasks — all in one place.</div>',
+                unsafe_allow_html=True
+            )
 
         reminders = store.list_reminders(user_key)
 

@@ -2099,155 +2099,19 @@ def render_forgot_password():
 
 
 
-def render_logged_in_navigation():
-
-
-
-    st.sidebar.divider()
-
-    st.sidebar.markdown("### 🌿 MINDMATE AI")
-
-
-
-    st.sidebar.write(
-
-        f"Hello, {st.session_state.profile_name}!"
-
-    )
-
-
-
-    if st.sidebar.button(
-
-        "🔔 Reminders",
-
-        use_container_width=True
-
-    ):
-
-        st.query_params["page"] = "Reminders"
-
-        st.rerun()
-
-
-
-    if st.sidebar.button(
-
-        "🏠 Home",
-
-        use_container_width=True
-
-    ):
-
-        st.query_params["page"] = "Home"
-
-        st.rerun()
-
-
-
-    if st.sidebar.button(
-
-        "Log out",
-
-        use_container_width=True
-
-    ):
-
-
-
-        st.session_state.is_logged_in = False
-
-        st.session_state.profile_name = "MATE"
-
-        st.session_state.user_key = None
-
-
-
-        st.query_params.clear()
-
-
-
-        try:
-
-            if st.user.is_logged_in:
-
-                st.logout()
-
-        except Exception:
-
-            st.rerun()
-
-
-
-        st.rerun()
-
-
-
-
-
 # ============================================================
-
-# 14. MAIN ROUTER
-
+# 13. MAIN ROUTER — one authenticated navigation system
 # ============================================================
-
-
 
 save_google_notification_email()
-
-
-
 page = st.query_params.get("page", "Home")
 
-
-
 if st.session_state.is_logged_in:
-
-
-
-    if page == "Reminders":
-
-
-
-        if st.session_state.get("user_key"):
-
-
-
-            from reminders import render_reminders
-
-
-
-            render_reminders(
-
-                st.session_state.user_key
-
-            )
-
-
-
-            if st.sidebar.button("← Back to Home"):
-
-                st.query_params["page"] = "Home"
-
-                st.rerun()
-
-
-
-        else:
-
-            st.error("Please log in again to access reminders.")
-
-
-
-    else:
-
-
-
-        render_home()
-
-        render_logged_in_navigation()
-
-
+    legacy_pages = {"Reminders": "reminders", "Chatbot": "chat", "Vault": "vault", "Document Vault": "vault"}
+    if page in legacy_pages:
+        st.session_state["view"] = legacy_pages[page]
+        st.query_params.clear()
+    render_home()
 
 else:
 

@@ -43,8 +43,16 @@ html, body {background:#F2F6EE !important;}
   color:var(--ink) !important;font-family:'DM Sans','Segoe UI',system-ui,sans-serif;}
 #root,[data-testid="stAppViewContainer"],[data-testid="stMain"],[data-testid="stMainBlockContainer"],
 .block-container,[data-testid="stHeader"]{background:transparent !important;}
-[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
-#MainMenu,footer{display:none !important;}
+[data-testid="stDecoration"],
+#MainMenu,
+footer {
+    display: none !important;
+}
+
+/* Keep the header available for the mobile sidebar control */
+[data-testid="stHeader"] {
+    display: block !important;
+}
 [data-testid="stMain"]{position:relative;z-index:1;}
 .block-container,[data-testid="stMainBlockContainer"]{max-width:100% !important;padding:0 18px 36px !important;}
 
@@ -116,9 +124,27 @@ div.stButton > button[kind="primary"]:hover{background:var(--sage-d);color:#fff;
   color:var(--muted);text-align:center;line-height:1.7;}
 
 /* account chip, bottom-left, with a drop-up menu */
-.st-key-account_dock{position:fixed !important;left:16px;bottom:16px;width:min(250px,calc(100vw - 32px));z-index:999;}
-.st-key-account_dock [data-testid="stVerticalBlock"]{gap:.5rem !important;}
-.st-key-btn_account button{justify-content:flex-start;background:rgba(255,255,255,.92);border-radius:16px;
+/* Keep the account dock inside the actual sidebar */
+[data-testid="stSidebar"] {
+    position: relative !important;
+}
+
+[data-testid="stSidebar"] .st-key-account_dock {
+    position: absolute !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 14px !important;
+    width: auto !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    z-index: 999 !important;
+}
+
+[data-testid="stSidebar"] .st-key-account_dock button {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 999px !important;
+}.st-key-btn_account button{justify-content:flex-start;background:rgba(255,255,255,.92);border-radius:16px;
   box-shadow:0 8px 24px rgba(85,108,76,.16);}
 .st-key-btn_account button{height:auto !important;min-height:48px;white-space:normal !important;}
 .st-key-btn_account button [data-testid="stMarkdownContainer"] p{white-space:normal !important;overflow-wrap:anywhere !important;text-align:left;line-height:1.25;}
@@ -168,6 +194,116 @@ html{font-size:112.5% !important;}
         padding-left: 14px !important;
         padding-right: 14px !important;
     }
+}
+
+/* Mobile sidebar hamburger visibility */
+/* Mobile sidebar hamburger */
+/* Mobile sidebar toggle */
+@media (max-width: 700px) {
+
+    [data-testid="stHeader"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        min-height: 3.5rem !important;
+        height: 3.5rem !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 999999 !important;
+        background: #F2F6EE !important;
+    }
+
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] button,
+    [data-testid="stHeader"] button[kind="header"],
+    [data-testid="stHeader"] button {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+
+    [data-testid="stSidebarCollapsedControl"] {
+        position: fixed !important;
+        top: 6px !important;
+        left: 8px !important;
+        z-index: 1000000 !important;
+    }
+
+color[data-testid="stToolbar"] {
+    display: flex !important;
+    visibility: visible !important;
+}    [data-testid="stHeader"] button svg {
+        fill: #30382C !important;
+        color: #30382C !important;
+    }
+}
+/* Actual Streamlit mobile sidebar hamburger */
+@media (max-width: 700px) {
+    [data-testid="stToolbar"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    [data-testid="stExpandSidebarButton"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: fixed !important;
+        top: 10px !important;
+        left: 10px !important;
+        z-index: 1000000 !important;
+    }
+
+    [data-testid="stExpandSidebarButton"] button {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        background: #EAF1E6 !important;
+        color: #30382C !important;
+        border: 1px solid #DCE1D5 !important;
+    }
+}
+/* RESTORE STREAMLIT SIDEBAR TOGGLE */
+[data-testid="stHeader"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: 3.5rem !important;
+    position: relative !important;
+    z-index: 999999 !important;
+}
+
+[data-testid="stToolbar"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    min-height: 3rem !important;
+    overflow: visible !important;
+}
+
+[data-testid="stExpandSidebarButton"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 42px !important;
+    height: 42px !important;
+    position: fixed !important;
+    top: 10px !important;
+    left: 10px !important;
+    z-index: 1000000 !important;
+}
+
+[data-testid="stExpandSidebarButton"] button {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 42px !important;
+    height: 42px !important;
 }
 </style>
 """
@@ -225,33 +361,46 @@ _VIEWS = {
 
 
 def _account_dock(name: str, above=None, key: str = "account_dock") -> None:
-    """Account chip fixed at the bottom-left; click it to open a drop-up with Log out."""
-    with st.container(key=key):
-        if above is not None:
-            above()                       # e.g. the usage card, shown directly above the name
-        if st.session_state.get("menu_open"):
-            with st.container(key="account_panel"):
-                if st.button("Log out", key="btn_logout", icon=":material/logout:", width="stretch"):
-                    logout()
-        label = name
-        if st.button(label, key="btn_account", icon=":material/account_circle:", width="stretch"):
-            st.session_state.menu_open = not st.session_state.get("menu_open", False)
-            st.rerun()
+    """Account chip fixed at the bottom of the sidebar, with a drop-up Logout action."""
+    with st.sidebar:
+        with st.container(key=key):
+            if above is not None:
+                above()
+            if st.session_state.get("menu_open"):
+                with st.container(key="account_panel"):
+                    if st.button("Log out", key="btn_logout", icon=":material/logout:", width="stretch"):
+                        logout()
+            if st.button(name, key="btn_account", icon=":material/account_circle:", width="stretch"):
+                st.session_state.menu_open = not st.session_state.get("menu_open", False)
+                st.rerun()
 
+
+def _feature_sidebar() -> None:
+    """Shared navigation shown in the same place on Chatbot, Vault and Reminders."""
+    with st.sidebar:
+        if st.button("Dashboard", key="shared_nav_dashboard", icon=":material/dashboard:", width="stretch"):
+            st.session_state["view"] = "dashboard"
+            st.session_state["chat_id"] = None
+            st.session_state["vault_active"] = None
+            st.session_state["vault_show_upload"] = False
+            st.rerun()
 
 def _render_dashboard() -> None:
     name = str(st.session_state.get("profile_name", "mate")).strip() or "mate"
     first = html_lib.escape(name.split()[0])
     view = st.session_state.get("view", "dashboard")
     if view == "vault":
+        _feature_sidebar()
         from vault import render_vault       # imported here to avoid a circular import
         render_vault(st.session_state.get("user_key"), name, _account_dock)
         return
     if view == "chat":
+        _feature_sidebar()
         from chatbot import render_chat      # imported here to avoid a circular import
         render_chat(st.session_state.get("user_key"), name, _account_dock)
         return
     if view == "reminders":
+        _feature_sidebar()
         from reminders import render_reminders
         render_reminders(st.session_state.get("user_key"), name, _account_dock)
         return

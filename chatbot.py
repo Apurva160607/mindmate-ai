@@ -201,10 +201,7 @@ _CHAT_CSS = """
 [data-testid="stSidebar"]{background:rgba(255,255,255,.82) !important;border-right:1px solid var(--line);}
 [data-testid="stSidebarUserContent"]{padding-bottom:250px !important;}
 @media (min-width:700px){
-  /* the panel is ALWAYS open on desktop: Streamlit's remembered "collapsed" state is overridden,
-     the collapse/expand buttons are hidden, and the drag handle on its right edge still lets you make it narrower */
-  [data-testid="stSidebar"]{transform:translateX(0) !important;min-width:min(240px,90vw) !important;max-width:min(560px,90vw) !important;}
-  [data-testid="stSidebarCollapseButton"],[data-testid="stExpandSidebarButton"]{display:none !important;}
+  [data-testid="stSidebar"]{min-width:250px !important;max-width:300px !important;}
 }
 /* name chip + usage card pinned to the bottom of the left panel (follows the panel's width) */
 .st-key-chat_dock{position:fixed !important;left:12px;right:12px;bottom:12px;max-width:320px;z-index:999;}
@@ -372,15 +369,11 @@ def _usage_card(user_key: str, chat_id) -> None:
 def _sidebar(user_key: str, name: str, dock) -> None:
     current = st.session_state.get("chat_id")
     with st.sidebar:
-        st.markdown('<div class="mm-side-brand">\U0001F9E0 MINDMATE AI</div>', unsafe_allow_html=True)
-        if st.button("New chat", key="chat_new", icon=":material/edit_square:", width="stretch"):
+        st.markdown("**CHAT HISTORY**")
+        if st.button("＋ New chat", key="chat_new", width="stretch"):
             st.session_state.chat_id = None
             st.rerun()
-        if st.button("Dashboard", key="chat_back", icon=":material/arrow_back:", width="stretch"):
-            st.session_state.view = "dashboard"
-            st.session_state.chat_id = None
-            st.rerun()
-        query = st.text_input("Search chats", placeholder="Search chats", label_visibility="collapsed",
+        query = st.text_input("Search chats", placeholder="Search conversations", label_visibility="collapsed",
                               key="chat_search", max_chars=100)
         chats = store.search_chats(user_key, query)
         if not chats:
@@ -415,7 +408,7 @@ def _sidebar(user_key: str, name: str, dock) -> None:
                     if current == chat.id:
                         st.session_state.chat_id = None
                     st.rerun()
-        dock(name, lambda: _usage_card(user_key, current), "chat_dock")
+    dock(name, lambda: _usage_card(user_key, current), "chat_dock")
 
 
 # ------------------------------------------------------ attachments (the "+")

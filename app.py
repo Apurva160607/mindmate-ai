@@ -638,11 +638,9 @@ Your personal AI space.
 
 
 
-    except Exception:
-
+    except Exception as e:
+        print(f"SMTP ERROR: {type(e).__name__}")
         return False, "Email delivery failed. Check your email settings and try again."
-
-
 
 
 
@@ -1545,7 +1543,7 @@ def render_login():
 
 
 
-    method = st.query_params.get("method", "Email")
+    method = "Email"
 
 
 
@@ -1743,35 +1741,7 @@ def render_login():
 
 
 
-    st.caption("Other sign-in methods")
-
-
-
-    google_col, apple_col = st.columns(2)
-
-
-
-    with google_col:
-
-        if st.button("Google", use_container_width=True):
-
-            st.query_params["method"] = "Google"
-
-            st.rerun()
-
-
-
-    with apple_col:
-
-        if st.button("Apple", use_container_width=True):
-
-            st.query_params["method"] = "Apple"
-
-            st.rerun()
-
-
-
-
+    
 
 # 12. FORGOT PASSWORD
 

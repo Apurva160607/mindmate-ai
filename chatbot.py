@@ -700,7 +700,6 @@ def _render_generation_fragment(user_key: str, chat_id: int) -> None:
             elif active["cancel"].is_set():
                 st.info("Generation stopped.")
             st.session_state.pop("active_generation", None)
-            st.rerun()
 
 
 # ---------------------------------------------------------------- the page

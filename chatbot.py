@@ -801,6 +801,9 @@ def render_chat(user_key, name: str, dock) -> None:
                     st.caption(f"Using the vision model `{model}`. It is small, so simple questions about the picture work best.")
                 history = [{"role": m.role, "content": m.content} for m in messages[-HISTORY_LIMIT:]]
                 _launch_generation(build_messages(history, docs, photos), model)
-
+    st.write(
+        "Generation active:",
+        bool(st.session_state.get("active_generation"))
+    )
     if st.session_state.get("active_generation"):
         _render_generation_fragment(user_key, chat_id)

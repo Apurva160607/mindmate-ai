@@ -671,6 +671,11 @@ def _render_generation_fragment(user_key: str, chat_id: int) -> None:
             backend_label = "cloud AI (Groq)" if backend_name() == "groq" else "local AI (Ollama)"
             st.caption(f"Generating with {backend_label} · You can stop this response at any time.")
 
+        st.caption(
+            f"Debug: thread_alive={active['thread'].is_alive()}, "
+            f"queue_size={active['chunks'].qsize()}, "
+            f"done={active['done']}"
+        )
         while True:
             try:
                 kind, value = active["chunks"].get_nowait()

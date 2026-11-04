@@ -22,7 +22,7 @@ import urllib.request
 from datetime import date
 
 import streamlit as st
-
+from groq import Groq
 import attachments as att
 import chat_store as store
 
@@ -92,7 +92,22 @@ def _base_url() -> str:
     if not url.startswith(("http://", "https://")):
         raise OllamaError("MINDMATE_OLLAMA_URL must start with http:// or https://")
     return url
+def backend_name() -> str:
+    return _cfg("MINDMATE_AI_BACKEND", "local").strip().lower()
 
+
+def groq_model_name() -> str:
+    return _cfg("MINDMATE_GROQ_MODEL", "").strip()
+
+
+def groq_problem() -> str:
+    if not _cfg("MINDMATE_GROQ_API_KEY", "").strip():
+        return "Groq API key is missing. Add MINDMATE_GROQ_API_KEY in Streamlit Secrets."
+
+    if not groq_model_name():
+        return "Groq model is not configured. Add MINDMATE_GROQ_MODEL in Streamlit Secrets."
+
+    return ""
 
 # -------------------------------------------------------------------- Ollama
 @st.cache_data(ttl=5, show_spinner=False)
@@ -122,56 +137,132 @@ def ollama_problem(model: str = None) -> str:
 
 
 def stream_reply(messages: list, usage: dict = None, model: str = None, cancel_event=None, response_holder=None):
-    """Yield an Ollama reply incrementally and allow the UI to close it on Stop."""
-    base, model = _base_url(), model or model_name()
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": True,
-        "options": {"temperature": 0.7, "num_ctx": _context_size()},
-    }
-    request = urllib.request.Request(
-        f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=300) as resp:
+        """Stream a reply using the configured AI backend."""
+
+        if backend_name() == "groq":
+            yield from stream_groq_reply(
+                messages,
+                usage=usage,
+                model=model,
+                cancel_event=cancel_event,
+                response_holder=response_holder,
+            )
+            return
+
+        base, model = _base_url(), model or model_name()
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "options": {"temperature": 0.7, "num_ctx": _context_size()},
+        }
+        request = urllib.request.Request(
+            f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=300) as resp:
+                if response_holder is not None:
+                    response_holder["response"] = resp
+                for raw in resp:
+                    if cancel_event is not None and cancel_event.is_set():
+                        return
+                    line = raw.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    if "error" in data:
+                        raise OllamaError(f"The model reported an error: {str(data['error'])[:200]}")
+                    piece = data.get("message", {}).get("content", "")
+                    if piece:
+                        yield piece
+                    if data.get("done"):
+                        if usage is not None:
+                            usage["prompt"] = int(data.get("prompt_eval_count") or 0)
+                            usage["completion"] = int(data.get("eval_count") or 0)
+                        return
+        except Exception as exc:
+            if cancel_event is not None and cancel_event.is_set():
+                return
+            if isinstance(exc, urllib.error.HTTPError):
+                if exc.code == 404:
+                    raise OllamaError(f"The model `{model}` is not installed. Run `ollama pull {model}`.") from exc
+                raise OllamaError(f"Ollama returned an error (HTTP {exc.code}).") from exc
+            if isinstance(exc, urllib.error.URLError):
+                raise OllamaError(f"Cannot reach Ollama at {base}. Is it running?") from exc
+            if isinstance(exc, json.JSONDecodeError):
+                raise OllamaError("Ollama sent an unreadable reply. Try again.") from exc
+            raise OllamaError("The connection to Ollama ended unexpectedly. Please try again.") from exc
+        finally:
             if response_holder is not None:
-                response_holder["response"] = resp
-            for raw in resp:
-                if cancel_event is not None and cancel_event.is_set():
-                    return
-                line = raw.decode("utf-8").strip()
-                if not line:
-                    continue
-                data = json.loads(line)
-                if "error" in data:
-                    raise OllamaError(f"The model reported an error: {str(data['error'])[:200]}")
-                piece = data.get("message", {}).get("content", "")
+                response_holder.pop("response", None)
+
+def stream_groq_reply(
+    messages: list,
+    usage: dict = None,
+    model: str = None,
+    cancel_event=None,
+    response_holder=None,
+):
+    """Stream a reply from Groq's hosted AI model."""
+
+    api_key = _cfg("MINDMATE_GROQ_API_KEY", "").strip()
+    model = model or groq_model_name()
+
+    if not api_key:
+        raise OllamaError("Groq API key is missing. Check your Streamlit Secrets.")
+
+    if not model:
+        raise OllamaError("Groq model is not configured. Check your Streamlit Secrets.")
+
+    client = None
+    stream = None
+
+    try:
+        client = Groq(api_key=api_key)
+
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.7,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        if response_holder is not None:
+            response_holder["response"] = stream
+
+        for chunk in stream:
+            if cancel_event is not None and cancel_event.is_set():
+                return
+
+            if chunk.choices:
+                piece = chunk.choices[0].delta.content or ""
                 if piece:
                     yield piece
-                if data.get("done"):
-                    if usage is not None:
-                        usage["prompt"] = int(data.get("prompt_eval_count") or 0)
-                        usage["completion"] = int(data.get("eval_count") or 0)
-                    return
+
+            if chunk.usage and usage is not None:
+                usage["prompt"] = chunk.usage.prompt_tokens
+                usage["completion"] = chunk.usage.completion_tokens
+
     except Exception as exc:
         if cancel_event is not None and cancel_event.is_set():
             return
-        if isinstance(exc, urllib.error.HTTPError):
-            if exc.code == 404:
-                raise OllamaError(f"The model `{model}` is not installed. Run `ollama pull {model}`.") from exc
-            raise OllamaError(f"Ollama returned an error (HTTP {exc.code}).") from exc
-        if isinstance(exc, urllib.error.URLError):
-            raise OllamaError(f"Cannot reach Ollama at {base}. Is it running?") from exc
-        if isinstance(exc, json.JSONDecodeError):
-            raise OllamaError("Ollama sent an unreadable reply. Try again.") from exc
-        raise OllamaError("The connection to Ollama ended unexpectedly. Please try again.") from exc
+        raise OllamaError(
+            f"Groq request failed: {str(exc)[:250]}"
+        ) from exc
+
     finally:
         if response_holder is not None:
             response_holder.pop("response", None)
 
+        if stream is not None:
+            close_stream = getattr(stream, "close", None)
+            if callable(close_stream):
+                close_stream()
 
+        if client is not None:
+            client.close()
 def build_messages(history: list, docs: list, photos: list) -> list:
     """System prompt + attached documents + recent history (+ the latest photo)."""
     system = SYSTEM_PROMPT
@@ -204,7 +295,27 @@ _CHAT_CSS = """
   [data-testid="stSidebar"]{min-width:250px !important;max-width:300px !important;}
 }
 /* name chip + usage card pinned to the bottom of the left panel (follows the panel's width) */
-.st-key-chat_dock{position:fixed !important;left:12px;right:12px;bottom:12px;max-width:320px;z-index:999;}
+/* Keep usage and account controls inside the sidebar */
+[data-testid="stSidebar"] .st-key-chat_dock {
+    position: absolute !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 14px !important;
+    width: auto !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    z-index: 999 !important;
+}
+
+[data-testid="stSidebar"] .st-key-chat_dock button {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 999px !important;
+}
+
+[data-testid="stSidebarUserContent"] {
+    padding-bottom: 260px !important;
+}
 .st-key-chat_dock [data-testid="stVerticalBlock"]{gap:.5rem !important;}
 [data-testid="stHeader"]{display:block !important;background:transparent !important;}
 [data-testid="stToolbarActions"],[data-testid="stMainMenu"],[data-testid="stAppDeployButton"],[data-testid="stDecoration"]{display:none !important;}
@@ -557,7 +668,8 @@ def _render_generation_fragment(user_key: str, chat_id: int) -> None:
                     except Exception:
                         pass
         with status_col:
-            st.caption("Generating locally · You can stop this response at any time.")
+            backend_label = "cloud AI (Groq)" if backend_name() == "groq" else "local AI (Ollama)"
+            st.caption(f"Generating with {backend_label} · You can stop this response at any time.")
 
         while True:
             try:
@@ -660,8 +772,18 @@ def render_chat(user_key, name: str, dock) -> None:
 
         docs = st.session_state.get("chat_docs", {}).get(chat_id, []) if chat_id is not None else []
         photos = st.session_state.get("chat_photos", {}).get(chat_id, []) if chat_id is not None else []
-        model = vision_model_name() if photos else model_name()
-        problem = ollama_problem(model)
+        is_cloud = backend_name() == "groq"
+
+        if photos:
+            model = vision_model_name()
+            problem = ollama_problem(model)
+        elif is_cloud:
+            model = groq_model_name()
+            problem = groq_problem()
+        else:
+            model = model_name()
+            problem = ollama_problem(model)
+
         if problem and not generate:
             st.warning(problem)
 

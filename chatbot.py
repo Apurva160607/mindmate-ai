@@ -136,66 +136,76 @@ def ollama_problem(model: str = None) -> str:
     return ""
 
 
-def stream_reply(messages: list, usage: dict = None, model: str = None, cancel_event=None, response_holder=None):
-        """Stream a reply using the configured AI backend."""
+def stream_reply(
+    messages: list,
+    usage: dict = None,
+    model: str = None,
+    cancel_event=None,
+    response_holder=None,
+    backend: str = "local",
+    groq_api_key: str = "",
+):
+    """Stream a reply using the backend configuration captured by the main thread."""
 
-        if backend_name() == "groq":
-            yield from stream_groq_reply(
-                messages,
-                usage=usage,
-                model=model,
-                cancel_event=cancel_event,
-                response_holder=response_holder,
-            )
-            return
-
-        base, model = _base_url(), model or model_name()
-        payload = {
-            "model": model,
-            "messages": messages,
-            "stream": True,
-            "options": {"temperature": 0.7, "num_ctx": _context_size()},
-        }
-        request = urllib.request.Request(
-            f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}, method="POST",
+    if backend == "groq":
+        yield from stream_groq_reply(
+            messages,
+            usage=usage,
+            model=model,
+            api_key=groq_api_key,
+            cancel_event=cancel_event,
+            response_holder=response_holder,
         )
-        try:
-            with urllib.request.urlopen(request, timeout=300) as resp:
-                if response_holder is not None:
-                    response_holder["response"] = resp
-                for raw in resp:
-                    if cancel_event is not None and cancel_event.is_set():
-                        return
-                    line = raw.decode("utf-8").strip()
-                    if not line:
-                        continue
-                    data = json.loads(line)
-                    if "error" in data:
-                        raise OllamaError(f"The model reported an error: {str(data['error'])[:200]}")
-                    piece = data.get("message", {}).get("content", "")
-                    if piece:
-                        yield piece
-                    if data.get("done"):
-                        if usage is not None:
-                            usage["prompt"] = int(data.get("prompt_eval_count") or 0)
-                            usage["completion"] = int(data.get("eval_count") or 0)
-                        return
-        except Exception as exc:
-            if cancel_event is not None and cancel_event.is_set():
-                return
-            if isinstance(exc, urllib.error.HTTPError):
-                if exc.code == 404:
-                    raise OllamaError(f"The model `{model}` is not installed. Run `ollama pull {model}`.") from exc
-                raise OllamaError(f"Ollama returned an error (HTTP {exc.code}).") from exc
-            if isinstance(exc, urllib.error.URLError):
-                raise OllamaError(f"Cannot reach Ollama at {base}. Is it running?") from exc
-            if isinstance(exc, json.JSONDecodeError):
-                raise OllamaError("Ollama sent an unreadable reply. Try again.") from exc
-            raise OllamaError("The connection to Ollama ended unexpectedly. Please try again.") from exc
-        finally:
+        return
+
+    base, model = _base_url(), model or model_name()
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "options": {"temperature": 0.7, "num_ctx": _context_size()},
+    }
+    request = urllib.request.Request(
+        f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=300) as resp:
             if response_holder is not None:
-                response_holder.pop("response", None)
+                response_holder["response"] = resp
+            for raw in resp:
+                if cancel_event is not None and cancel_event.is_set():
+                    return
+                line = raw.decode("utf-8").strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                if "error" in data:
+                    raise OllamaError(f"The model reported an error: {str(data['error'])[:200]}")
+                piece = data.get("message", {}).get("content", "")
+                if piece:
+                    yield piece
+                if data.get("done"):
+                    if usage is not None:
+                        usage["prompt"] = int(data.get("prompt_eval_count") or 0)
+                        usage["completion"] = int(data.get("eval_count") or 0)
+                    return
+    except Exception as exc:
+        if cancel_event is not None and cancel_event.is_set():
+            return
+        if isinstance(exc, urllib.error.HTTPError):
+            if exc.code == 404:
+                raise OllamaError(f"The model `{model}` is not installed. Run `ollama pull {model}`.") from exc
+            raise OllamaError(f"Ollama returned an error (HTTP {exc.code}).") from exc
+        if isinstance(exc, urllib.error.URLError):
+            raise OllamaError(f"Cannot reach Ollama at {base}. Is it running?") from exc
+        if isinstance(exc, json.JSONDecodeError):
+            raise OllamaError("Ollama sent an unreadable reply. Try again.") from exc
+        raise OllamaError("The connection to Ollama ended unexpectedly. Please try again.") from exc
+    finally:
+        if response_holder is not None:
+            response_holder.pop("response", None)
+
 
 def stream_groq_reply(
     messages: list,
@@ -203,66 +213,82 @@ def stream_groq_reply(
     model: str = None,
     cancel_event=None,
     response_holder=None,
+    api_key: str = "",
 ):
-    """Stream a reply from Groq's hosted AI model."""
+    """Stream responses from Groq reliably."""
 
-    api_key = _cfg("MINDMATE_GROQ_API_KEY", "").strip()
-    model = model or groq_model_name()
+    api_key = (api_key or "").strip()
 
     if not api_key:
-        raise OllamaError("Groq API key is missing. Check your Streamlit Secrets.")
+        raise OllamaError(
+            "Groq API key is missing. Check your Streamlit Secrets."
+        )
 
     if not model:
-        raise OllamaError("Groq model is not configured. Check your Streamlit Secrets.")
+        raise OllamaError(
+            "Groq model is not configured. Check your Streamlit Secrets."
+        )
 
     client = None
     stream = None
 
     try:
-        client = Groq(api_key=api_key)
+        client = Groq(
+            api_key=api_key,
+            timeout=90.0,
+            max_retries=1,
+        )
 
         stream = client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=0.7,
             stream=True,
-            stream_options={"include_usage": True},
         )
 
         if response_holder is not None:
             response_holder["response"] = stream
 
         for chunk in stream:
+
             if cancel_event is not None and cancel_event.is_set():
                 return
 
-            if chunk.choices:
-                piece = chunk.choices[0].delta.content or ""
-                if piece:
-                    yield piece
+            if not chunk.choices:
+                continue
 
-            if chunk.usage and usage is not None:
-                usage["prompt"] = chunk.usage.prompt_tokens
-                usage["completion"] = chunk.usage.completion_tokens
+            piece = chunk.choices[0].delta.content
+
+            if piece:
+                yield piece
 
     except Exception as exc:
+
         if cancel_event is not None and cancel_event.is_set():
             return
+
         raise OllamaError(
-            f"Groq request failed: {str(exc)[:250]}"
+            f"Groq request failed: {type(exc).__name__}: {str(exc)[:250]}"
         ) from exc
 
     finally:
+
         if response_holder is not None:
             response_holder.pop("response", None)
 
         if stream is not None:
-            close_stream = getattr(stream, "close", None)
-            if callable(close_stream):
-                close_stream()
+            try:
+                stream.close()
+            except Exception:
+                pass
 
         if client is not None:
-            client.close()
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
 def build_messages(history: list, docs: list, photos: list) -> list:
     """System prompt + attached documents + recent history (+ the latest photo)."""
     system = SYSTEM_PROMPT
@@ -614,7 +640,10 @@ def _composer(limit_reached: bool, staged: dict):
 
 # --------------------------------------------------------- stoppable generation
 def _launch_generation(messages: list, model: str) -> None:
-    """Run Ollama in a worker thread so the Streamlit fragment can receive Stop clicks."""
+    """Run the selected AI backend in a worker thread so the UI can receive Stop clicks."""
+    # Streamlit configuration/secrets are read here, on the main script thread.
+    selected_backend = backend_name()
+    groq_api_key = _cfg("MINDMATE_GROQ_API_KEY", "").strip() if selected_backend == "groq" else ""
     chunks = queue.Queue()
     cancel_event = threading.Event()
     usage = {}
@@ -631,28 +660,23 @@ def _launch_generation(messages: list, model: str) -> None:
     }
 
     def worker():
-        print("DEBUG: Worker started")
-
         try:
             for piece in stream_reply(
                 messages, usage, model,
                 cancel_event=cancel_event,
                 response_holder=response_holder,
+                backend=selected_backend,
+                groq_api_key=groq_api_key,
             ):
-                print("DEBUG: Received Groq chunk:", repr(piece[:50]))
                 chunks.put(("piece", piece))
 
-            print("DEBUG: Stream completed")
-
         except Exception as exc:
-            print("DEBUG: Worker error:", repr(exc))
             chunks.put(("error", str(exc)))
 
         finally:
-            print("DEBUG: Worker finished")
             chunks.put(("done", None))
 
-    thread = threading.Thread(target=worker, daemon=True, name="mindmate-ollama-stream")
+    thread = threading.Thread(target=worker, daemon=True, name="mindmate-ai-stream")
     active["thread"] = thread
     st.session_state["active_generation"] = active
     thread.start()
@@ -685,11 +709,23 @@ def _render_generation_fragment(user_key: str, chat_id: int) -> None:
             f"queue_size={active['chunks'].qsize()}, "
             f"done={active['done']}"
         )
-        while True:
-            try:
-                kind, value = active["chunks"].get_nowait()
-            except queue.Empty:
-                break
+        received_chunks = False
+
+    while True:
+        try:
+            kind, value = active["chunks"].get_nowait()
+        except queue.Empty:
+            break
+
+        if kind == "piece":
+            active["text"] += value
+            received_chunks = True
+
+        elif kind == "error":
+            active["error"] = value
+
+        elif kind == "done":
+            active["done"] = True
             if kind == "piece":
                 active["text"] += value
             elif kind == "error":
@@ -800,19 +836,70 @@ def render_chat(user_key, name: str, dock) -> None:
         if problem and not generate:
             st.warning(problem)
 
-        if generate and not st.session_state.get("active_generation"):
-            if problem:
-                st.error(problem)
-            else:
-                if any(d.truncated for d in docs) or sum(len(d.text) for d in docs) > DOC_BUDGET:
-                    st.caption("Only the first part of a long document fits in the model's reading window.")
-                if photos:
-                    st.caption(f"Using the vision model `{model}`. It is small, so simple questions about the picture work best.")
-                history = [{"role": m.role, "content": m.content} for m in messages[-HISTORY_LIMIT:]]
-                _launch_generation(build_messages(history, docs, photos), model)
-    st.write(
-        "Generation active:",
-        bool(st.session_state.get("active_generation"))
-    )
+
+if generate and not st.session_state.get("active_generation"):
+    if problem:
+        st.error(problem)
+    else:
+        if any(d.truncated for d in docs) or sum(len(d.text) for d in docs) > DOC_BUDGET:
+            st.caption("Only the first part of a long document fits in the model's reading window.")
+
+        if photos:
+            st.caption(f"Using the vision model `{model}`. It is small, so simple questions about the picture work best.")
+
+        history = [
+            {"role": m.role, "content": m.content}
+            for m in messages[-HISTORY_LIMIT:]
+        ]
+
+        prompt_messages = build_messages(history, docs, photos)
+
+        # Direct streaming for Groq: bypass background queue and fragment.
+        if is_cloud and not photos:
+            usage = {}
+
+            with st.chat_message("assistant"):
+                try:
+                    api_key = _cfg("MINDMATE_GROQ_API_KEY", "").strip()
+
+                    answer = st.write_stream(
+                        stream_groq_reply(
+                            prompt_messages,
+                            usage=usage,
+                            model=model,
+                            api_key=api_key,
+                        )
+                    )
+
+                    answer = (answer or "").strip()
+
+                    if answer:
+                        store.add_message(
+                            user_key, chat_id, "assistant", answer
+                        )
+
+                        prompt_tokens = usage.get("prompt") or 0
+                        completion_tokens = (
+                            usage.get("completion")
+                            or _estimate_tokens(answer)
+                        )
+
+                        store.record_usage(
+                            user_key,
+                            chat_id,
+                            prompt_tokens,
+                            completion_tokens,
+                        )
+                    else:
+                        st.warning("Groq returned an empty response. Please try again.")
+
+                except Exception as exc:
+                    st.error(f"Chatbot error: {exc}")
+
+        else:
+            # Keep existing local Ollama generation.
+            _launch_generation(prompt_messages, model)
+
+        launch_generation(build_messages(history, docs, photos), model)
     if st.session_state.get("active_generation"):
         _render_generation_fragment(user_key, chat_id)

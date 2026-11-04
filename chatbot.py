@@ -631,16 +631,25 @@ def _launch_generation(messages: list, model: str) -> None:
     }
 
     def worker():
+        print("DEBUG: Worker started")
+
         try:
             for piece in stream_reply(
                 messages, usage, model,
                 cancel_event=cancel_event,
                 response_holder=response_holder,
             ):
+                print("DEBUG: Received Groq chunk:", repr(piece[:50]))
                 chunks.put(("piece", piece))
+
+            print("DEBUG: Stream completed")
+
         except Exception as exc:
+            print("DEBUG: Worker error:", repr(exc))
             chunks.put(("error", str(exc)))
+
         finally:
+            print("DEBUG: Worker finished")
             chunks.put(("done", None))
 
     thread = threading.Thread(target=worker, daemon=True, name="mindmate-ollama-stream")
